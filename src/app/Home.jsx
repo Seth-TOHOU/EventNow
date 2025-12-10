@@ -12,7 +12,7 @@ export default function Home() {
             <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">EventNow</span>
           </div>
           <div className="flex items-center gap-4">
-            <a href="/admin" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">
+            <a href="/login" className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors">
               Admin
             </a>
           </div>
