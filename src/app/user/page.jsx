@@ -109,7 +109,7 @@ export default function UserRequestsViewer() {
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Calendar className="h-6 w-6 text-blue-600" />
-            <span className="text-xl font-semibold">EventNow</span>
+            <a href="/" className="text-xl font-semibold">EventNow</a>
           </div>
           <a
             href="/"
