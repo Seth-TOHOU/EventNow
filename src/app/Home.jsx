@@ -36,6 +36,12 @@ export default function Home() {
               >
                 Soumettre une demande
               </a>
+              <a
+                href="/user"
+                className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold hover:shadow-lg hover:scale-105 transition-all duration-200"
+              >
+                Voir mes demandes
+              </a>
 
             </div>
           </div>

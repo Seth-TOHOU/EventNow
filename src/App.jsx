@@ -4,6 +4,7 @@ import Home from "./app/Home";
 import RequestForm from "./app/request/page";
 import AdminPanel from "./app/admin/page";
 import AdminLogin from "./app/admin/login";
+import UserRequestsViewer from "./app/user/page";
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
         <Route path="/request" element={<RequestForm />} />
         <Route path="/dashboard" element={<AdminPanel />} />
         <Route path="/login" element={<AdminLogin />} />
+        <Route path="/user" element={<UserRequestsViewer />} />
       </Routes>
     </div>
   );
