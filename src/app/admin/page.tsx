@@ -1,3 +1,5 @@
+"use client"
+
 import { useState, useEffect } from "react"
 import { Calendar, Search, Filter, LogOut, AlertCircle } from "lucide-react"
 import { auth, db } from "../../../firebase"
@@ -19,59 +21,44 @@ interface Request {
   phone?: string
   subject: string
   message: string
-  status: "pending" | "processed"
+  status: "pending" | "processed" | "rejected"
   createdAt: Timestamp | null
 }
 
 export default function AdminPanel() {
   const [requests, setRequests] = useState<Request[]>([])
   const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "processed">("all")
+  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "processed" | "rejected">("all")
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const [userEmail, setUserEmail] = useState("")
 
-  // ----- PROTECTION PAR AUTHENTIFICATION ET VÉRIFICATION ADMIN -----
+  // ----- AUTH + VERIFICATION ADMIN -----
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      console.log("🔍 onAuthStateChanged déclenché", { user: user?.email, uid: user?.uid })
-      
       if (!user) {
-        console.log("❌ Pas d'utilisateur connecté, redirection...")
         window.location.href = "/login"
         return
       }
 
       setUserEmail(user.email || "")
-      console.log("✅ Utilisateur connecté:", user.email, "UID:", user.uid)
 
-      // Vérifier si l'utilisateur est admin
       try {
-        console.log("🔍 Vérification du document admin avec UID:", user.uid)
-        const adminDocRef = doc(db, "admins", user.uid)
-        const adminDoc = await getDoc(adminDocRef)
-        
-        console.log("📄 Document admin existe?", adminDoc.exists())
-        console.log("📄 Données du document:", adminDoc.data())
+        const adminDoc = await getDoc(doc(db, "admins", user.uid))
 
         if (!adminDoc.exists()) {
-          console.log("❌ Document admin n'existe pas pour UID:", user.uid)
           await signOut(auth)
-          setError("Accès refusé. Ce compte n'est pas un compte administrateur.")
-          setTimeout(() => {
-            window.location.href = "/login"
-          }, 2000)
+          setError("Accès refusé. Ce compte n'est pas un administrateur.")
+          setTimeout(() => window.location.href = "/login", 2000)
           return
         }
 
-        console.log("✅ Utilisateur est admin, chargement des demandes...")
         setIsCheckingAuth(false)
         fetchRequests()
       } catch (err) {
-        console.error("❌ Erreur de vérification admin:", err)
-        setError("Erreur de vérification des privilèges administrateur")
+        setError("Erreur lors de la vérification administrateur.")
         setIsCheckingAuth(false)
         setIsLoading(false)
       }
@@ -80,21 +67,16 @@ export default function AdminPanel() {
     return () => unsubscribe()
   }, [])
 
-  // ----- CHARGEMENT DES DONNÉES FIRESTORE -----
+  // ----- CHARGEMENT DES DEMANDES -----
   const fetchRequests = async () => {
     try {
-      console.log("📥 Début du chargement des demandes...")
       setIsLoading(true)
-      setError("")
       const snapshot = await getDocs(collection(db, "requests"))
-      console.log("📊 Nombre de documents trouvés:", snapshot.docs.length)
-      
+
       const data = snapshot.docs.map((docSnap) => ({
         ...docSnap.data(),
-        requestId: docSnap.id,
+        requestId: docSnap.id
       })) as Request[]
-
-      console.log("📋 Données chargées:", data)
 
       // Tri par date décroissante
       data.sort((a, b) => {
@@ -103,17 +85,11 @@ export default function AdminPanel() {
       })
 
       setRequests(data)
-      console.log("✅ Demandes chargées avec succès:", data.length)
     } catch (err: any) {
-      console.error("❌ Erreur lors du chargement des demandes:", err)
-      console.error("Code d'erreur:", err.code)
-      console.error("Message d'erreur:", err.message)
-
-      // Message d'erreur spécifique selon le type d'erreur
-      if (err.code === 'permission-denied') {
-        setError("Permission refusée. Vérifiez que votre compte est bien administrateur dans Firestore.")
+      if (err.code === "permission-denied") {
+        setError("Permission refusée. Votre compte n'est pas administrateur.")
       } else {
-        setError("Impossible de charger les demandes. Veuillez réessayer.")
+        setError("Impossible de charger les demandes.")
       }
     } finally {
       setIsLoading(false)
@@ -121,11 +97,9 @@ export default function AdminPanel() {
   }
 
   // ----- MISE À JOUR DU STATUT -----
-  const updateStatus = async (id: string, newStatus: "pending" | "processed") => {
+  const updateStatus = async (id: string, newStatus: "pending" | "processed" | "rejected") => {
     try {
-      await updateDoc(doc(db, "requests", id), {
-        status: newStatus,
-      })
+      await updateDoc(doc(db, "requests", id), { status: newStatus })
 
       const updated = requests.map((req) =>
         req.requestId === id ? { ...req, status: newStatus } : req
@@ -137,70 +111,80 @@ export default function AdminPanel() {
         setSelectedRequest({ ...selectedRequest, status: newStatus })
       }
     } catch (error) {
-      console.error("Erreur Firestore:", error)
       setError("Impossible de mettre à jour le statut.")
     }
   }
 
   // ----- DÉCONNEXION -----
   const handleLogout = async () => {
-    try {
-      await signOut(auth)
-      window.location.href = "/login"
-    } catch (error) {
-      console.error("Erreur de déconnexion:", error)
-    }
+    await signOut(auth)
+    window.location.href = "/login"
   }
 
-  // ----- SYSTÈME DE FILTRAGE -----
+  // ----- FILTRAGE -----
   const filteredRequests = requests.filter((req) => {
     const search = searchTerm.toLowerCase()
+
     const matchesSearch =
       req.firstName.toLowerCase().includes(search) ||
       req.lastName.toLowerCase().includes(search) ||
       req.email.toLowerCase().includes(search) ||
       req.subject.toLowerCase().includes(search)
 
-    const matchesStatus = statusFilter === "all" || req.status === statusFilter
+    const matchesStatus =
+      statusFilter === "all" || req.status === statusFilter
 
     return matchesSearch && matchesStatus
   })
 
-  // ----- BADGE DE STATUT -----
-  const getStatusBadge = (status: string) =>
-    status === "pending" ? (
-      <span className="px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300">
-        En attente
-      </span>
-    ) : (
-      <span className="px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 border border-green-300">
-        Traité
+  // ----- BADGES -----
+  const getStatusBadge = (status: string) => {
+    if (status === "pending") {
+      return (
+        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300">
+          En attente
+        </span>
+      )
+    }
+
+    if (status === "processed") {
+      return (
+        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 border border-green-300">
+          Traité
+        </span>
+      )
+    }
+
+    return (
+      <span className="px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-300">
+        Refusé
       </span>
     )
+  }
 
-  // ----- ÉCRAN DE CHARGEMENT INITIAL (vérification auth + admin) -----
+  // ----- LOADING AUTH -----
   if (isCheckingAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="inline-block w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-          <p className="mt-4 text-gray-600">Vérification des privilèges administrateur...</p>
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="mt-4 text-gray-600">Vérification administrateur...</p>
         </div>
       </div>
     )
   }
 
-  // ----- ÉCRAN D'ERREUR (accès refusé) -----
+  // ----- ERREUR ACCÈS REFUSÉ -----
   if (error && error.includes("Accès refusé")) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center max-w-md">
           <AlertCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Accès refusé</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Accès Refusé</h2>
           <p className="text-gray-600 mb-6">{error}</p>
           <button
             onClick={() => window.location.href = "/login"}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             Retour à la connexion
           </button>
@@ -212,19 +196,18 @@ export default function AdminPanel() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* NAVBAR */}
-      <nav className="border-b border-gray-200 bg-white shadow-sm">
-        <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
+      <nav className="border-b bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <a href="/" className="flex items-center gap-2">
             <Calendar className="h-6 w-6 text-blue-600" />
-            <span className="text-xl font-semibold text-gray-900">EventNow Admin</span>
+            <span className="text-xl font-semibold">EventNow Admin</span>
           </a>
+
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">
-              {userEmail}
-            </span>
+            <span className="text-sm text-gray-600">{userEmail}</span>
             <button
               onClick={handleLogout}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100"
             >
               <LogOut className="h-4 w-4" />
               Déconnexion
@@ -233,20 +216,15 @@ export default function AdminPanel() {
         </div>
       </nav>
 
-      <main className="mx-auto max-w-7xl px-6 py-12">
-        <h1 className="text-4xl font-bold mb-6 text-gray-900">Panneau d'administration</h1>
+      <main className="max-w-7xl mx-auto px-6 py-12">
+        <h1 className="text-4xl font-bold mb-6">Panneau d'administration</h1>
 
-        {/* MESSAGE D'ERREUR */}
+        {/* ERREUR */}
         {error && !error.includes("Accès refusé") && (
-          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
+          <div className="bg-red-50 border border-red-200 p-4 rounded-lg mb-6 flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-red-600" />
+            <div>
               <p className="text-sm text-red-800">{error}</p>
-              {error.includes("Permission refusée") && (
-                <p className="text-xs text-red-600 mt-2">
-                  💡 <strong>Astuce:</strong> Créez un document dans la collection "admins" avec votre UID comme ID de document.
-                </p>
-              )}
             </div>
           </div>
         )}
@@ -260,7 +238,7 @@ export default function AdminPanel() {
               placeholder="Rechercher une demande..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              className="w-full pl-10 pr-4 py-2 border rounded-lg bg-white"
             />
           </div>
 
@@ -269,49 +247,60 @@ export default function AdminPanel() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="px-4 py-2 rounded-lg border border-gray-300 bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              className="px-4 py-2 border rounded-lg bg-white"
             >
               <option value="all">Tous</option>
               <option value="pending">En attente</option>
               <option value="processed">Traité</option>
+              <option value="rejected">Refusé</option>
             </select>
           </div>
         </div>
 
         {/* STATISTIQUES */}
-        <div className="grid sm:grid-cols-3 gap-4 mb-8">
-          <div className="p-6 rounded-xl border border-gray-200 bg-white shadow-sm">
-            <div className="text-3xl font-bold text-gray-900">{requests.length}</div>
-            <div className="text-sm text-gray-600">Total demandes</div>
+        <div className="grid sm:grid-cols-4 gap-4 mb-8">
+          <div className="p-6 bg-white rounded-xl border shadow-sm">
+            <div className="text-3xl font-bold">{requests.length}</div>
+            <p className="text-sm text-gray-600">Total demandes</p>
           </div>
 
-          <div className="p-6 rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="p-6 bg-white rounded-xl border shadow-sm">
             <div className="text-3xl font-bold text-yellow-600">
               {requests.filter((r) => r.status === "pending").length}
             </div>
-            <div className="text-sm text-gray-600">En attente</div>
+            <p className="text-sm text-gray-600">En attente</p>
           </div>
 
-          <div className="p-6 rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="p-6 bg-white rounded-xl border shadow-sm">
             <div className="text-3xl font-bold text-green-600">
               {requests.filter((r) => r.status === "processed").length}
             </div>
-            <div className="text-sm text-gray-600">Traité</div>
+            <p className="text-sm text-gray-600">Traité</p>
+          </div>
+
+          <div className="p-6 bg-white rounded-xl border shadow-sm">
+            <div className="text-3xl font-bold text-red-600">
+              {requests.filter((r) => r.status === "rejected").length}
+            </div>
+            <p className="text-sm text-gray-600">Refusé</p>
           </div>
         </div>
 
-        {/* LISTE ET DÉTAILS */}
+        {/* LISTE + DÉTAILS */}
         {isLoading ? (
           <div className="text-center py-12">
-            <div className="inline-block w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-            <p className="mt-4 text-gray-600">Chargement des demandes...</p>
+            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+            <p className="mt-4 text-gray-600">Chargement...</p>
           </div>
         ) : (
           <div className="grid lg:grid-cols-2 gap-6">
-            {/* LISTE DES DEMANDES */}
-            <div className="space-y-4">
+
+            {/* LISTE */}
+            <div>
+              <h2 className="text-xl font-semibold mb-4">Liste des demandes</h2>
+              <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
               {filteredRequests.length === 0 ? (
-                <div className="p-8 text-center border border-gray-200 rounded-xl bg-white">
+                <div className="p-8 text-center bg-white border rounded-xl">
                   <p className="text-gray-600">Aucune demande trouvée</p>
                 </div>
               ) : (
@@ -319,122 +308,128 @@ export default function AdminPanel() {
                   <div
                     key={req.requestId}
                     onClick={() => setSelectedRequest(req)}
-                    className={`p-6 rounded-xl border cursor-pointer transition-all ${
+                    className={`p-6 rounded-xl border cursor-pointer transition ${
                       selectedRequest?.requestId === req.requestId
-                        ? "border-blue-500 bg-blue-50 shadow-md"
-                        : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm"
+                        ? "border-blue-500 bg-blue-50 shadow"
+                        : "border-gray-200 bg-white hover:border-gray-300 hover:shadow"
                     }`}
                   >
-                    <div className="flex items-start justify-between">
+                    <div className="flex items-center justify-between">
                       <div>
-                        <h3 className="font-semibold text-gray-900">
-                          {req.firstName} {req.lastName}
-                        </h3>
+                        <p className="font-semibold">{req.firstName} {req.lastName}</p>
                         <p className="text-sm text-gray-600">{req.email}</p>
                       </div>
                       {getStatusBadge(req.status)}
                     </div>
 
-                    <p className="mt-3 font-medium text-gray-800">{req.subject}</p>
+                    <p className="mt-3 font-medium">{req.subject}</p>
 
                     {req.createdAt && (
                       <p className="text-sm text-gray-500 mt-1">
-                        {new Date(req.createdAt.seconds * 1000).toLocaleDateString("fr-FR", {
-                          day: "numeric",
-                          month: "long",
-                          year: "numeric"
-                        })}
+                        {new Date(req.createdAt.seconds * 1000).toLocaleDateString("fr-FR")}
                       </p>
                     )}
                   </div>
                 ))
               )}
+              </div>
             </div>
 
-            {/* DÉTAILS DE LA DEMANDE */}
-            <div className="lg:sticky lg:top-4 lg:h-fit">
+            {/* DÉTAILS */}
+            <div className="lg:sticky lg:top-4">
               {selectedRequest ? (
-                <div className="p-8 rounded-xl border border-gray-200 bg-white shadow-sm">
-                  <h2 className="text-xl font-semibold mb-6 text-gray-900">Détails</h2>
+                <div className="p-8 mt-11 bg-white border rounded-xl shadow-sm">
+                  <h2 className="text-xl font-semibold mb-6">Détails</h2>
 
                   <div className="space-y-4">
                     <div>
-                      <p className="text-sm font-medium text-gray-600">Nom complet</p>
-                      <p className="text-gray-900">{selectedRequest.firstName} {selectedRequest.lastName}</p>
+                      <p className="text-sm text-gray-600">Nom</p>
+                      <p className="font-medium">{selectedRequest.firstName} {selectedRequest.lastName}</p>
                     </div>
 
                     <div>
-                      <p className="text-sm font-medium text-gray-600">Email</p>
-                      <p className="text-gray-900">{selectedRequest.email}</p>
+                      <p className="text-sm text-gray-600">Email</p>
+                      <p className="font-medium">{selectedRequest.email}</p>
                     </div>
 
                     {selectedRequest.phone && (
                       <div>
-                        <p className="text-sm font-medium text-gray-600">Téléphone</p>
-                        <p className="text-gray-900">{selectedRequest.phone}</p>
+                        <p className="text-sm text-gray-600">Téléphone</p>
+                        <p className="font-medium">{selectedRequest.phone}</p>
                       </div>
                     )}
 
                     <div>
-                      <p className="text-sm font-medium text-gray-600">Objet</p>
-                      <p className="text-gray-900">{selectedRequest.subject}</p>
+                      <p className="text-sm text-gray-600">Objet</p>
+                      <p className="font-medium">{selectedRequest.subject}</p>
                     </div>
 
                     <div>
-                      <p className="text-sm font-medium text-gray-600">Message</p>
-                      <p className="text-gray-900 whitespace-pre-wrap">{selectedRequest.message}</p>
+                      <p className="text-sm text-gray-600">Message</p>
+                      <p className="font-medium whitespace-pre-wrap">{selectedRequest.message}</p>
                     </div>
 
                     <div>
-                      <p className="text-sm font-medium text-gray-600">Date de soumission</p>
-                      <p className="text-gray-900">
+                      <p className="text-sm text-gray-600">Soumis le</p>
+                      <p className="font-medium">
                         {selectedRequest.createdAt &&
-                          new Date(selectedRequest.createdAt.seconds * 1000).toLocaleString("fr-FR", {
-                            day: "numeric",
-                            month: "long",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit"
-                          })}
+                          new Date(selectedRequest.createdAt.seconds * 1000).toLocaleString("fr-FR")}
                       </p>
                     </div>
                   </div>
 
                   {/* BOUTONS DE STATUT */}
-                  <div className="mt-6 pt-6 border-t border-gray-200">
-                    <label className="text-sm font-medium text-gray-700 block mb-3">Changer le statut</label>
+                  <div className="mt-6 pt-6 border-t">
+                    <label className="text-sm text-gray-600 block mb-3">Changer le statut</label>
 
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-3 gap-2">
+
+                      {/* En attente */}
                       <button
                         onClick={() => updateStatus(selectedRequest.requestId, "pending")}
-                        className={`flex-1 px-4 py-2 rounded-lg border font-medium transition-all ${
+                        className={`px-4 py-2 rounded-lg border font-medium transition ${
                           selectedRequest.status === "pending"
-                            ? "bg-yellow-500 text-white border-yellow-600 shadow-sm"
-                            : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                            ? "bg-yellow-500 text-white border-yellow-600"
+                            : "border-gray-300 hover:bg-gray-50"
                         }`}
                       >
                         En attente
                       </button>
 
+                      {/* Traité */}
                       <button
                         onClick={() => updateStatus(selectedRequest.requestId, "processed")}
-                        className={`flex-1 px-4 py-2 rounded-lg border font-medium transition-all ${
+                        className={`px-4 py-2 rounded-lg border font-medium transition ${
                           selectedRequest.status === "processed"
-                            ? "bg-green-500 text-white border-green-600 shadow-sm"
-                            : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                            ? "bg-green-500 text-white border-green-600"
+                            : "border-gray-300 hover:bg-gray-50"
                         }`}
                       >
                         Traité
                       </button>
+
+                      {/* Refusé */}
+                      <button
+                        onClick={() => updateStatus(selectedRequest.requestId, "rejected")}
+                        className={`px-4 py-2 rounded-lg border font-medium transition ${
+                          selectedRequest.status === "rejected"
+                            ? "bg-red-500 text-white border-red-600"
+                            : "border-gray-300 hover:bg-gray-50"
+                        }`}
+                      >
+                        Refusé
+                      </button>
+
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="p-8 rounded-xl border border-gray-200 bg-white text-center">
+                <div className="p-8 mt-11 bg-white border rounded-xl text-center">
                   <p className="text-gray-600">Sélectionnez une demande pour voir les détails</p>
                 </div>
               )}
             </div>
+
           </div>
         )}
       </main>
