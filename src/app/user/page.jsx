@@ -94,12 +94,12 @@ export default function UserRequestsViewer() {
 
   const getStatusMessage = (status) => {
     if (status === "pending") {
-      return "Votre demande est en cours de traitement. Nous vous contacterons bientôt.";
+      return "Votre demande est en cours de traitement.";
     }
     if (status === "processed") {
       return "Votre demande a été traitée avec succès.";
     }
-    return "Votre demande a été refusée. Veuillez nous contacter pour plus d'informations.";
+    return "Votre demande a été refusée.";
   };
 
   return (
